@@ -371,13 +371,14 @@ class ComposerThread(threading.Thread):
         # https://docs.python.org/2/library/threading.html#thread-objects
         self.name = self.id
 
-        # For 'pending' branched releases, we only want to perform repo-related
+        # For 'pending' or 'frozen' branched releases, we only want to perform repo-related
         # tasks for testing updates. For stable updates, we should just add the
         # dist_tag and do everything else other than composing/updateinfo, since
         # the nightly build-branched cron job composes for us.
         self.skip_compose = False
-        if self.compose.release.state is ReleaseState.pending \
-                and self.compose.request is UpdateRequest.stable:
+        if self.compose.request is UpdateRequest.stable \
+            and (self.compose.release.state is ReleaseState.pending
+                 or self.compose.release.state is ReleaseState.frozen):
             self.skip_compose = True
 
         log.info('Running ComposerThread(%s)' % self.id)
@@ -1363,6 +1364,14 @@ class RPMComposerThread(PungiComposerThread):
         with open(os.path.join(pungi_conf_dir, 'variants.xml'), 'w') as variantsfile:
             variantsfile.write(variants_template.render())
 
+        # Copy any remaining pungi config file
+        for file in os.listdir(config.get('pungi.basepath')):
+            if file.endswith('.conf'):
+                shutil.copy(
+                    os.path.join(config.get('pungi.basepath'), file),
+                    os.path.join(pungi_conf_dir, file)
+                )
+
 
 class ModuleComposerThread(PungiComposerThread):
     """Run Pungi with configs that produce module repositories."""
@@ -1391,6 +1400,14 @@ class ModuleComposerThread(PungiComposerThread):
             self._variants_file = template.render(modules=self._module_list,
                                                   moduledefs=self._module_defs)
             variantsfile.write(self._variants_file)
+
+        # Copy any remaining pungi config file
+        for file in os.listdir(config.get('pungi.basepath')):
+            if file.endswith('.conf'):
+                shutil.copy(
+                    os.path.join(config.get('pungi.basepath'), file),
+                    os.path.join(pungi_conf_dir, file)
+                )
 
     def generate_testing_digest(self):
         """Temporarily disable testing digests for modules.
